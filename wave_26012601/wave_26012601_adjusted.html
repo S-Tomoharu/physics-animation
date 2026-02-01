@@ -57,10 +57,42 @@ function handleComplete(evt,comp) {
 }
 </script>
 <!-- write your code here -->
+
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #ffffff;
+    overflow: hidden;
+  }
+  
+  #animation_container {
+    position: relative;
+  }
+</style>
+
+<script>
+// === ここで位置と倍率を設定 ===
+var TRANSLATE_X = 300.0;    // X座標（正の数で右、負の数で左）
+var TRANSLATE_Y = 100.0;    // Y座標（正の数で下、負の数で上）
+var SCALE = 1.5;          // 倍率（1.0が等倍）
+// ==============================
+
+window.addEventListener('load', function() {
+  var container = document.getElementById('animation_container');
+  container.style.transform = 
+    'scale(' + SCALE + ') translate(' + TRANSLATE_X + 'px, ' + TRANSLATE_Y + 'px)';
+  container.style.transformOrigin = 'center center';
+});
+</script>
 </head>
-<body onload="init();" style="margin:0px;">
-	<div id="animation_container" style="background-color:rgba(255, 255, 255, 1.00); width:1446px; height:700px">
-		<canvas id="canvas" width="1446" height="700" style="position: absolute; display: block; background-color:rgba(255, 255, 255, 1.00);"></canvas>
+<body onload="init();"  style="margin:0px; display:flex; justify-content:center; align-items:center; min-height:100vh; background-color:#ffffff;">
+	<div id="animation_container" style="background-color: #ffffff; width:1446px; height:700px">
+		<canvas id="canvas" width="1446" height="700" style="position: absolute; display: block; background-color: #ffffff;"></canvas>
 		<div id="dom_overlay_container" style="pointer-events:none; overflow:hidden; width:1446px; height:700px; position: absolute; left: 0px; top: 0px; display: block;">
 		</div>
 	</div>
