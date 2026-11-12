@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>波の重ね合わせ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: wide canvas of three stacked graphs on the left, two wave control panels on the right. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --ink: #14202b;
+  --muted: #566475;
+  --line: #d8dfe6;
+  --c1: #1a62d6;
+  --c2: #cf4510;
+  --sum: #14202b;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Meiryo", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e141b; --surface: #17212c; --ink: #e8eef4; --muted: #95a3b2; --line: #2b3846;
+    --c1: #5aa2ff; --c2: #ff8a4c; --sum: #e8eef4;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e141b; --surface: #17212c; --ink: #e8eef4; --muted: #95a3b2; --line: #2b3846;
+  --c1: #5aa2ff; --c2: #ff8a4c; --sum: #e8eef4;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.page { max-width: 1180px; margin: 0 auto; padding: 20px 16px 32px; display: flex; flex-direction: column; gap: 16px; }
+header h1 { margin: 0; font-size: 24px; font-weight: 700; text-wrap: balance; }
+header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+
+.presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.presets .lead { color: var(--muted); font-size: 13px; margin-right: 4px; }
+
+button, .seg label {
+  font: inherit;
+}
+.btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); min-width: 96px; }
+:focus-visible { outline: 2px solid var(--c1); outline-offset: 2px; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 16px; align-items: start; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+
+.stage { display: flex; flex-direction: column; gap: 12px; }
+canvas { display: block; width: 100%; height: clamp(340px, 46vw, 480px); }
+
+.toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+.toggles label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 14px; font-weight: 500; }
+.toggles input { width: 16px; height: 16px; margin: 0; cursor: pointer; }
+.toggles .sw { display: inline-block; width: 24px; border-radius: 2px; }
+.toggles .t1 input { accent-color: var(--c1); }
+.toggles .t2 input { accent-color: var(--c2); }
+.toggles .t3 input { accent-color: var(--sum); }
+.transport { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding-top: 10px; border-top: 1px solid var(--line); }
+.transport .time { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 200px; }
+.transport .time input { flex: 1; }
+.transport output, .transport .speed span { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+.speed { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+select { font: inherit; font-size: 14px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+
+.controls { display: flex; flex-direction: column; gap: 16px; }
+.wave h2 { margin: 0 0 8px; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 104px; align-items: center; gap: 8px; padding: 3px 0; }
+.row label { font-size: 13px; color: var(--muted); }
+.val { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.val .num { width: 64px; font: inherit; font-size: 13px; padding: 3px 5px; text-align: right; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font-variant-numeric: tabular-nums; }
+.val .unit { font-size: 12px; color: var(--muted); min-width: 22px; }
+input[type="range"] { width: 100%; accent-color: var(--accent, var(--c1)); }
+.wave.w2 { --accent: var(--c2); }
+.wave.w1 { --accent: var(--c1); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 5px 10px; font-size: 13px; cursor: pointer; color: var(--muted); }
+.seg input:checked + label { background: var(--accent); color: #fff; }
+.seg input:focus-visible + label { outline: 2px solid var(--c1); outline-offset: -2px; }
+.speedline { margin: 8px 0 0; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.note { color: var(--muted); font-size: 13px; margin: 0; }
+
+@media (max-width: 880px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  .row { grid-template-columns: 84px minmax(0, 1fr) 96px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>波の重ね合わせ</h1>
+    <p>2つの波源から出た正弦波を足し合わせます。波源は t = 0 で振動を始め、波は速さ v = fλ で広がります。位相差 Δφ は、波1に対する波2の波源の振動のずれです。</p>
+  </header>
+
+  <div class="presets" role="group" aria-label="プリセット">
+    <span class="lead">例から始める</span>
+    <button class="btn" data-preset="standing" type="button">定常波</button>
+    <button class="btn" data-preset="beat" type="button">うなり</button>
+    <button class="btn" data-preset="strong" type="button">強め合い</button>
+    <button class="btn" data-preset="weak" type="button">弱め合い</button>
+  </div>
+
+  <div class="main">
+    <section class="card stage" aria-label="波のグラフ">
+      <div class="toggles" role="group" aria-label="表示する波">
+        <label class="t1" for="show0"><input type="checkbox" id="show0" checked><span class="sw" style="height:3px;background:var(--c1)"></span>波1</label>
+        <label class="t2" for="show1"><input type="checkbox" id="show1" checked><span class="sw" style="height:3px;background:var(--c2)"></span>波2</label>
+        <label class="t3" for="show2"><input type="checkbox" id="show2" checked><span class="sw" style="height:4px;background:var(--sum)"></span>合成波</label>
+      </div>
+      <canvas id="cv" role="img" aria-label="波1、波2、およびその合成波を重ねたグラフ。各波源の位置の媒質の変位を丸で示す"></canvas>
+      <div class="transport">
+        <button id="play" class="btn primary" type="button">再生</button>
+        <button id="reset" class="btn" type="button">最初に戻す</button>
+        <div class="time">
+          <label for="tt" style="font-size:13px;color:var(--muted)">時刻</label>
+          <input id="tt" type="range" min="0" max="30" step="0.01" value="0">
+          <output id="ttv" for="tt">0.00 s</output>
+        </div>
+        <div class="speed">
+          <label for="spd">再生速度</label>
+          <select id="spd">
+            <option value="0.25">0.25倍</option>
+            <option value="0.5">0.5倍</option>
+            <option value="1" selected>1倍</option>
+            <option value="2">2倍</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <aside class="controls" aria-label="波のパラメータ">
+      <section class="card wave w1" id="wave1"></section>
+      <section class="card wave w2" id="wave2"></section>
+      <p class="note">▲は波源の位置です（青が波1、赤が波2）。青丸は波1の波源（x = 0）、赤丸は波2の波源（x = x₀）にある媒質の変位で、波源の振動そのものです。黒い輪は、同じ位置での合成波の変位です。2つの波源が同じ位置のときは、青の中に赤が見えます。上のチェックで、波ごとに線と丸の表示を切り替えられます。</p>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  var X_MAX = 12, T_MAX = 30, Y_MAX = 2.15;
+
+  var state = {
+    w: [
+      { A: 1, lam: 4, f: 0.25, phi: 0, dir: 1, xs: 0 },
+      { A: 1, lam: 4, f: 0.25, phi: 0, dir: 0, xs: 12 }
+    ],
+    show: [true, true, true],
+    t: 0,
+    playing: false,
+    speed: 1
+  };
+
+  var presets = {
+    standing: [{ A: 1, lam: 4, f: 0.25, phi: 0, dir: 1, xs: 0 }, { A: 1, lam: 4, f: 0.25, phi: 0, dir: 0, xs: 12 }],
+    beat:     [{ A: 1, lam: 4, f: 0.25, phi: 0, dir: 1, xs: 0 }, { A: 1, lam: 3.6, f: 0.28, phi: 0, dir: 1, xs: 0 }],
+    strong:   [{ A: 1, lam: 4, f: 0.25, phi: 0, dir: 1, xs: 0 }, { A: 1, lam: 4, f: 0.25, phi: 0, dir: 1, xs: 0 }],
+    weak:     [{ A: 1, lam: 4, f: 0.25, phi: 0, dir: 1, xs: 0 }, { A: 1, lam: 4, f: 0.25, phi: 180, dir: 1, xs: 0 }]
+  };
+
+  var defs = [
+    { key: 'A',   label: '振幅 A',        min: 0,   max: 1,   step: 0.05, dec: 2, unit: '' },
+    { key: 'lam', label: '波長 λ',        min: 1,   max: 6,   step: 0.05, dec: 2, unit: 'm' },
+    { key: 'f',   label: '振動数 f',      min: 0.1, max: 1,   step: 0.01, dec: 2, unit: 'Hz' },
+    { key: 'phi', label: '位相差 Δφ',     min: 0,   max: 360, step: 5,    dec: 0, unit: '°', only: 1 },
+    { key: 'xs',  label: '波源の位置 x₀', min: 0,   max: 12,  step: 0.1,  dec: 1, unit: 'm', only: 1 }
+  ];
+
+  var inputs = [{}, {}];
+  var outs = [{}, {}];
+  var speedOut = [null, null];
+  var dirInputs = [[], []];
+
+  function buildPanel(i) {
+    var root = document.getElementById('wave' + (i + 1));
+    var colorVar = i === 0 ? 'var(--c1)' : 'var(--c2)';
+    var html = '<h2><span class="dot" style="background:' + colorVar + '"></span>波' + (i + 1) + (i === 0 ? '（波源は x = 0）' : '') + '</h2>';
+    defs.forEach(function (d) {
+      if (d.only !== undefined && d.only !== i) return;
+      var id = 'w' + (i + 1) + '-' + d.key;
+      html += '<div class="row"><label for="' + id + '">' + d.label + '</label>' +
+        '<input type="range" id="' + id + '" min="' + d.min + '" max="' + d.max + '" step="' + d.step + '">' +
+        '<span class="val"><input type="number" class="num" id="' + id + '-n" min="' + d.min + '" max="' + d.max + '" step="' + d.step + '" inputmode="decimal" aria-label="' + d.label + '（数値入力）">' +
+        '<span class="unit">' + d.unit + '</span></span></div>';
+    });
+    if (i === 1) {
+      html += '<div class="row"><span style="font-size:13px;color:var(--muted)">進む向き</span>' +
+        '<div class="seg" role="radiogroup" aria-label="波2の進む向き" style="grid-column:2 / 4;justify-self:start">' +
+        '<input type="radio" name="dir1" id="d1r" value="1"><label for="d1r">右へ</label>' +
+        '<input type="radio" name="dir1" id="d1l" value="-1"><label for="d1l">左へ</label>' +
+        '<input type="radio" name="dir1" id="d1b" value="0"><label for="d1b">両側へ</label>' +
+        '</div></div>';
+    }
+    html += '<p class="speedline" id="v' + i + '"></p>';
+    root.innerHTML = html;
+
+    defs.forEach(function (d) {
+      if (d.only !== undefined && d.only !== i) return;
+      var id = 'w' + (i + 1) + '-' + d.key;
+      var el = document.getElementById(id);
+      var nm = document.getElementById(id + '-n');
+      inputs[i][d.key] = el;
+      outs[i][d.key] = nm;
+      el.addEventListener('input', function () {
+        state.w[i][d.key] = parseFloat(el.value);
+        syncPanel(i);
+      });
+      // typed value: apply as soon as it is a valid number, tidy the field when leaving it
+      nm.addEventListener('input', function () {
+        var v = parseFloat(nm.value);
+        if (!isFinite(v)) return;
+        v = Math.min(d.max, Math.max(d.min, v));
+        state.w[i][d.key] = v;
+        el.value = v;
+        syncPanel(i, d.key);
+      });
+      nm.addEventListener('change', function () { syncPanel(i); });
+    });
+    if (i === 1) {
+      dirInputs[1] = [document.getElementById('d1r'), document.getElementById('d1l'), document.getElementById('d1b')];
+      dirInputs[1].forEach(function (r) {
+        r.addEventListener('change', function () {
+          if (r.checked) { state.w[1].dir = parseInt(r.value, 10); syncPanel(1); }
+        });
+      });
+    }
+    speedOut[i] = document.getElementById('v' + i);
+  }
+
+  function syncPanel(i, typing) {
+    var p = state.w[i];
+    defs.forEach(function (d) {
+      if (d.only !== undefined && d.only !== i) return;
+      inputs[i][d.key].value = p[d.key];
+      if (d.key !== typing) outs[i][d.key].value = p[d.key].toFixed(d.dec);
+    });
+    var way = '右向き';
+    if (i === 1) {
+      dirInputs[1][0].checked = p.dir === 1;
+      dirInputs[1][1].checked = p.dir === -1;
+      dirInputs[1][2].checked = p.dir === 0;
+      way = p.dir === 1 ? '右向き' : (p.dir === -1 ? '左向き' : '両側');
+    }
+    speedOut[i].textContent = '速さ v = fλ = ' + (p.f * p.lam).toFixed(2) + ' m/s（' + way + '）';
+  }
+
+  
+  function applyPreset(name) {
+    var src = presets[name];
+    for (var i = 0; i < 2; i++) {
+      state.w[i] = JSON.parse(JSON.stringify(src[i]));
+      syncPanel(i);
+    }
+    state.t = 0;
+    syncTime();
+  }
+
+  // A wave starts at its source at t = 0 and spreads at speed v = f*lambda.
+  // Points the front has not reached yet (or on the side the wave does not travel to) stay at 0.
+  function waveY(i, x, t) {
+    var p = state.w[i];
+    var xs = i === 0 ? 0 : p.xs;
+    var dir = i === 0 ? 1 : p.dir;
+    var d = x - xs, ad = Math.abs(d);
+    if (dir === 1 && d < 0) return 0;
+    if (dir === -1 && d > 0) return 0;
+    if (ad >= p.f * p.lam * t) return 0;
+    return p.A * Math.sin(2 * Math.PI * p.f * t - 2 * Math.PI * ad / p.lam + p.phi * Math.PI / 180);
+  }
+
+  /* ---------- drawing ---------- */
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var rootEl = document.documentElement;
+
+  function colors() {
+    var s = getComputedStyle(rootEl);
+    return {
+      ink: s.getPropertyValue('--ink').trim(),
+      surface: s.getPropertyValue('--surface').trim(),
+      muted: s.getPropertyValue('--muted').trim(),
+      line: s.getPropertyValue('--line').trim(),
+      c1: s.getPropertyValue('--c1').trim(),
+      c2: s.getPropertyValue('--c2').trim(),
+      sum: s.getPropertyValue('--sum').trim(),
+      font: s.getPropertyValue('--font-body').trim()
+    };
+  }
+
+  function draw() {
+    var dpr = window.devicePixelRatio || 1;
+    var rect = cv.getBoundingClientRect();
+    var W = rect.width, H = rect.height;
+    if (W < 10 || H < 10) { return; }
+    var pw = Math.round(W * dpr), ph = Math.round(H * dpr);
+    if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    var c = colors();
+
+    var padL = 44, padR = 14, padT = 12, padB = 28;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var mid = padT + plotH / 2;
+    var sy = (plotH / 2) / Y_MAX;
+    var N = Math.max(160, Math.ceil(plotW / 2));
+
+    ctx.font = '12px ' + c.font;
+    ctx.textBaseline = 'middle';
+
+    // vertical grid every 2 m
+    ctx.strokeStyle = c.line; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var gx = 0; gx <= X_MAX; gx += 2) {
+      var px = Math.round(padL + gx / X_MAX * plotW) + 0.5;
+      ctx.moveTo(px, padT); ctx.lineTo(px, padT + plotH);
+    }
+    ctx.stroke();
+
+    // horizontal grid at y = +-1, +-2
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    [-2, -1, 1, 2].forEach(function (gy) {
+      var py = Math.round(mid - gy * sy) + 0.5;
+      ctx.moveTo(padL, py); ctx.lineTo(padL + plotW, py);
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.strokeRect(padL + 0.5, padT + 0.5, plotW, plotH);
+
+    // zero line
+    ctx.strokeStyle = c.muted;
+    ctx.beginPath(); ctx.moveTo(padL, Math.round(mid) + 0.5); ctx.lineTo(padL + plotW, Math.round(mid) + 0.5); ctx.stroke();
+
+    // axis labels
+    ctx.fillStyle = c.muted; ctx.textAlign = 'right';
+    [-2, -1, 0, 1, 2].forEach(function (gy) {
+      ctx.fillText(String(gy), padL - 14, mid - gy * sy);
+    });
+    ctx.textAlign = 'center';
+    for (var xx = 0; xx <= X_MAX; xx += 2) {
+      ctx.fillText(String(xx), padL + xx / X_MAX * plotW, padT + plotH + 14);
+    }
+    ctx.textAlign = 'right';
+    ctx.fillText('x (m)', W - padR, padT + plotH + 14);
+    ctx.textAlign = 'left';
+    ctx.fillText('y', 8, padT + 4);
+
+    // curves: waves 1 and 2, then the sum on top
+    function curve(fn, color, lw) {
+      ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (var n = 0; n <= N; n++) {
+        var x = X_MAX * n / N;
+        var cx = padL + n / N * plotW;
+        var cy = mid - fn(x) * sy;
+        if (n === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+      }
+      ctx.stroke();
+    }
+    var t = state.t;
+    if (state.show[0]) curve(function (x) { return waveY(0, x, t); }, c.c1, 2.25);
+    if (state.show[1]) curve(function (x) { return waveY(1, x, t); }, c.c2, 2.25);
+    if (state.show[2]) curve(function (x) { return waveY(0, x, t) + waveY(1, x, t); }, c.sum, 3.25);
+
+    // source positions: small triangles on the bottom edge of the plot
+    function tri(x, color) {
+      var bx = padL + x / X_MAX * plotW, by = padT + plotH;
+      ctx.beginPath();
+      ctx.moveTo(bx - 7, by); ctx.lineTo(bx + 7, by); ctx.lineTo(bx, by - 12); ctx.closePath();
+      ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = c.surface; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    if (state.show[1]) tri(state.w[1].xs, c.c2);
+    if (state.show[0]) tri(0, c.c1);
+
+    // markers for the medium at each source: blue = wave 1 at x = 0, red = wave 2 at x = x0
+    var x2 = state.w[1].xs;
+    var y1 = waveY(0, 0, t), y2 = waveY(1, x2, t);
+    var sum0 = waveY(0, 0, t) + waveY(1, 0, t);
+    var sum2 = waveY(0, x2, t) + waveY(1, x2, t);
+    function dot(x, y, r, fill, stroke, lw) {
+      ctx.beginPath();
+      ctx.arc(padL + x / X_MAX * plotW, mid - y * sy, r, 0, Math.PI * 2);
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+    }
+    var together = x2 < 0.05;   // both sources at the same place: nest the dots
+    if (state.show[2]) {
+      dot(0, sum0, 9, null, c.sum, 2);
+      if (!together) dot(x2, sum2, 9, null, c.sum, 2);
+    }
+    if (state.show[0]) dot(0, y1, together && state.show[1] ? 7 : 6, c.c1, c.surface, 1.5);
+    if (state.show[1]) dot(x2, y2, together && state.show[0] ? 4.2 : 6, c.c2, c.surface, 1.5);
+
+    ctx.font = '12px ' + c.font;
+  }
+
+  
+  /* ---------- transport ---------- */
+  var playBtn = document.getElementById('play');
+  var resetBtn = document.getElementById('reset');
+  var tt = document.getElementById('tt');
+  var ttv = document.getElementById('ttv');
+  var spd = document.getElementById('spd');
+
+  function syncTime() {
+    tt.value = state.t;
+    ttv.textContent = state.t.toFixed(2) + ' s';
+  }
+  function syncPlay() {
+    playBtn.textContent = state.playing ? '一時停止' : '再生';
+  }
+
+  [0, 1, 2].forEach(function (i) {
+    document.getElementById('show' + i).addEventListener('change', function (e) { state.show[i] = e.target.checked; });
+  });
+  playBtn.addEventListener('click', function () { state.playing = !state.playing; syncPlay(); });
+  resetBtn.addEventListener('click', function () { state.t = 0; syncTime(); });
+  tt.addEventListener('input', function () { state.t = parseFloat(tt.value); ttv.textContent = state.t.toFixed(2) + ' s'; });
+  spd.addEventListener('change', function () { state.speed = parseFloat(spd.value); });
+  document.querySelectorAll('[data-preset]').forEach(function (b) {
+    b.addEventListener('click', function () { applyPreset(b.getAttribute('data-preset')); });
+  });
+
+  var last = null;
+  function loop(now) {
+    if (last === null) last = now;
+    var dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    if (state.playing) {
+      state.t = (state.t + dt * state.speed) % T_MAX;
+      syncTime();
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- init ---------- */
+  buildPanel(0);
+  buildPanel(1);
+  syncPanel(0);
+  syncPanel(1);
+  syncTime();
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    state.playing = false;
+  }
+  syncPlay();
+  draw();
+  requestAnimationFrame(loop);
+  window.addEventListener('resize', draw);
+})();
+</script>
+</body>
+</html>
