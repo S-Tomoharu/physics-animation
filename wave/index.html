@@ -72,6 +72,9 @@ button, .seg label {
 .stage { display: flex; flex-direction: column; gap: 12px; }
 canvas { display: block; width: 100%; height: clamp(340px, 46vw, 480px); }
 
+.stage.full { position: fixed; inset: 0; height: 100dvh; z-index: 100; border-radius: 0; border: 0; padding: 12px 18px; overflow: auto; }
+.stage.full canvas { height: auto; flex: 1 1 0; min-height: 0; }
+html.lock, html.lock body { overflow: hidden; }
 .toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
 .toggles label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 14px; font-weight: 500; }
 .toggles input { width: 16px; height: 16px; margin: 0; cursor: pointer; }
@@ -130,11 +133,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent, var(--c1)); }
   </div>
 
   <div class="main">
-    <section class="card stage" aria-label="波のグラフ">
+    <section class="card stage" id="stage" aria-label="波のグラフ">
       <div class="toggles" role="group" aria-label="表示する波">
         <label class="t1" for="show0"><input type="checkbox" id="show0" checked><span class="sw" style="height:3px;background:var(--c1)"></span>波1</label>
         <label class="t2" for="show1"><input type="checkbox" id="show1" checked><span class="sw" style="height:3px;background:var(--c2)"></span>波2</label>
         <label class="t3" for="show2"><input type="checkbox" id="show2" checked><span class="sw" style="height:4px;background:var(--sum)"></span>合成波</label>
+        <button id="full" class="btn" type="button" style="margin-left:auto">全画面表示</button>
       </div>
       <canvas id="cv" role="img" aria-label="波1、波2、およびその合成波を重ねたグラフ。各波源の位置の媒質の変位を丸で示す"></canvas>
       <div class="transport">
@@ -327,57 +331,70 @@ input[type="range"] { width: 100%; accent-color: var(--accent, var(--c1)); }
     ctx.clearRect(0, 0, W, H);
     var c = colors();
 
-    var padL = 44, padR = 14, padT = 12, padB = 28;
+    // everything scales up on wide canvases (full screen) so it reads from the back of a classroom
+    var fs = Math.max(1, Math.min(1.8, W / 760));
+    var lwk = Math.min(fs, 1.6);
+    function f(n) { return (Math.round(n * fs * 10) / 10) + 'px '; }
+
+    var padL = Math.round(58 * fs), padR = Math.round(46 * fs), padT = Math.round(32 * fs), padB = Math.round(34 * fs);
     var plotW = W - padL - padR, plotH = H - padT - padB;
+    var bottom = padT + plotH;
     var mid = padT + plotH / 2;
     var sy = (plotH / 2) / Y_MAX;
     var N = Math.max(160, Math.ceil(plotW / 2));
 
-    ctx.font = '12px ' + c.font;
     ctx.textBaseline = 'middle';
 
-    // vertical grid every 2 m
+    // faint grid: vertical every 2 m, horizontal at y = +-1, +-2
     ctx.strokeStyle = c.line; ctx.lineWidth = 1;
     ctx.beginPath();
-    for (var gx = 0; gx <= X_MAX; gx += 2) {
+    for (var gx = 2; gx <= X_MAX; gx += 2) {
       var px = Math.round(padL + gx / X_MAX * plotW) + 0.5;
-      ctx.moveTo(px, padT); ctx.lineTo(px, padT + plotH);
+      ctx.moveTo(px, padT); ctx.lineTo(px, bottom);
     }
-    ctx.stroke();
-
-    // horizontal grid at y = +-1, +-2
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath();
     [-2, -1, 1, 2].forEach(function (gy) {
       var py = Math.round(mid - gy * sy) + 0.5;
       ctx.moveTo(padL, py); ctx.lineTo(padL + plotW, py);
     });
     ctx.stroke();
-    ctx.globalAlpha = 1;
 
-    ctx.strokeRect(padL + 0.5, padT + 0.5, plotW, plotH);
+    // axes drawn as arrows: x along y = 0, y at x = 0
+    function arrow(x1, y1, x2, y2) {
+      var h = 10 * fs, a = Math.atan2(y2 - y1, x2 - x1);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2 - Math.cos(a) * h * 0.6, y2 - Math.sin(a) * h * 0.6); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - h * Math.cos(a - 0.4), y2 - h * Math.sin(a - 0.4));
+      ctx.lineTo(x2 - h * Math.cos(a + 0.4), y2 - h * Math.sin(a + 0.4));
+      ctx.closePath(); ctx.fillStyle = c.ink; ctx.fill();
+    }
+    ctx.strokeStyle = c.ink; ctx.lineWidth = 1.6 * lwk;
+    var xTip = padL + plotW + 26 * fs, yTip = padT - 20 * fs;
+    arrow(padL, mid, xTip, mid);
+    arrow(padL, bottom, padL, yTip);
 
-    // zero line
-    ctx.strokeStyle = c.muted;
-    ctx.beginPath(); ctx.moveTo(padL, Math.round(mid) + 0.5); ctx.lineTo(padL + plotW, Math.round(mid) + 0.5); ctx.stroke();
+    // axis names at the arrow tips
+    ctx.fillStyle = c.ink; ctx.textAlign = 'left';
+    ctx.font = 'italic 700 ' + f(18) + c.font;
+    ctx.fillText('x', xTip + 6 * fs, mid);
+    ctx.fillText('y', padL + 10 * fs, yTip + 2 * fs);
 
-    // axis labels
+    // tick labels
+    ctx.font = f(12) + c.font;
     ctx.fillStyle = c.muted; ctx.textAlign = 'right';
-    [-2, -1, 0, 1, 2].forEach(function (gy) {
-      ctx.fillText(String(gy), padL - 14, mid - gy * sy);
+    [-2, -1, 1, 2].forEach(function (gy) {
+      ctx.fillText(String(gy), padL - 10 * fs, mid - gy * sy);
     });
+    ctx.fillText('0', padL - 10 * fs, mid + 10 * fs);
     ctx.textAlign = 'center';
     for (var xx = 0; xx <= X_MAX; xx += 2) {
-      ctx.fillText(String(xx), padL + xx / X_MAX * plotW, padT + plotH + 14);
+      ctx.fillText(String(xx), padL + xx / X_MAX * plotW, bottom + 16 * fs);
     }
-    ctx.textAlign = 'right';
-    ctx.fillText('x (m)', W - padR, padT + plotH + 14);
-    ctx.textAlign = 'left';
-    ctx.fillText('y', 8, padT + 4);
+    ctx.fillText('[m]', xTip, bottom + 16 * fs);
 
     // curves: waves 1 and 2, then the sum on top
     function curve(fn, color, lw) {
-      ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = 'round';
+      ctx.strokeStyle = color; ctx.lineWidth = lw * lwk; ctx.lineJoin = 'round';
       ctx.beginPath();
       for (var n = 0; n <= N; n++) {
         var x = X_MAX * n / N;
@@ -394,9 +411,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent, var(--c1)); }
 
     // source positions: small triangles on the bottom edge of the plot
     function tri(x, color) {
-      var bx = padL + x / X_MAX * plotW, by = padT + plotH;
+      var bx = padL + x / X_MAX * plotW;
       ctx.beginPath();
-      ctx.moveTo(bx - 7, by); ctx.lineTo(bx + 7, by); ctx.lineTo(bx, by - 12); ctx.closePath();
+      ctx.moveTo(bx - 7 * fs, bottom); ctx.lineTo(bx + 7 * fs, bottom); ctx.lineTo(bx, bottom - 12 * fs); ctx.closePath();
       ctx.fillStyle = color; ctx.fill();
       ctx.strokeStyle = c.surface; ctx.lineWidth = 1.5; ctx.stroke();
     }
@@ -410,9 +427,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent, var(--c1)); }
     var sum2 = waveY(0, x2, t) + waveY(1, x2, t);
     function dot(x, y, r, fill, stroke, lw) {
       ctx.beginPath();
-      ctx.arc(padL + x / X_MAX * plotW, mid - y * sy, r, 0, Math.PI * 2);
+      ctx.arc(padL + x / X_MAX * plotW, mid - y * sy, r * fs, 0, Math.PI * 2);
       if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw * lwk; ctx.stroke(); }
     }
     var together = x2 < 0.05;   // both sources at the same place: nest the dots
     if (state.show[2]) {
@@ -421,8 +438,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent, var(--c1)); }
     }
     if (state.show[0]) dot(0, y1, together && state.show[1] ? 7 : 6, c.c1, c.surface, 1.5);
     if (state.show[1]) dot(x2, y2, together && state.show[0] ? 4.2 : 6, c.c2, c.surface, 1.5);
-
-    ctx.font = '12px ' + c.font;
   }
 
   
@@ -450,6 +465,32 @@ input[type="range"] { width: 100%; accent-color: var(--accent, var(--c1)); }
   spd.addEventListener('change', function () { state.speed = parseFloat(spd.value); });
   document.querySelectorAll('[data-preset]').forEach(function (b) {
     b.addEventListener('click', function () { applyPreset(b.getAttribute('data-preset')); });
+  });
+
+  var stage = document.getElementById('stage');
+  var fullBtn = document.getElementById('full');
+  function setFull(on) {
+    stage.classList.toggle('full', on);
+    document.documentElement.classList.toggle('lock', on);
+    fullBtn.textContent = on ? '全画面を終了' : '全画面表示';
+    try {
+      if (on && stage.requestFullscreen && !document.fullscreenElement) {
+        var r = stage.requestFullscreen();
+        if (r && r.catch) r.catch(function () {});
+      }
+      if (!on && document.fullscreenElement) {
+        var q = document.exitFullscreen();
+        if (q && q.catch) q.catch(function () {});
+      }
+    } catch (e) { /* the page still fills the window without browser full screen */ }
+    draw();
+  }
+  fullBtn.addEventListener('click', function () { setFull(!stage.classList.contains('full')); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && stage.classList.contains('full')) setFull(false);
+  });
+  document.addEventListener('fullscreenchange', function () {
+    if (!document.fullscreenElement && stage.classList.contains('full')) setFull(false);
   });
 
   var last = null;
